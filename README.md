@@ -61,7 +61,7 @@ A cheatsheet in order to help during intrusion steps on Windows environment.
 - [Bloodhound](https://github.com/BloodHoundAD/BloodHound)
 - [Ldeep](https://github.com/franc-pentest/ldeep)
 - [Ldapdomaindump](https://github.com/dirkjanm/ldapdomaindump)
-- [WinPeas](https://github.com/carlospolop/privilege-escalation-awesome-scripts-suite/tree/master/winPEAS)
+- [WinPeas](https://github.com/carlospolop/privilege-escalation-awesome-scripts-suite/tree/master/winPEAS) -> [Compiled Version](https://github.com/carlospolop/privilege-escalation-awesome-scripts-suite/tree/master/winPEAS/winPEASexe/winPEAS/bin/Obfuscated%20Releases)
 - [FullPower](https://github.com/itm4n/FullPowers)
 - [PrintSpoofer](https://github.com/itm4n/PrintSpoofer)
 - Potatoes
