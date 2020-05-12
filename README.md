@@ -92,6 +92,7 @@ With Enum4linux:
 This attack looks for users without Kerberos pre-authentication required. That means that anyone can send an AS_REQ request to the KDC on behalf of any of those users, and receive an AS_REP message. This last kind of message contains a chunk of data encrypted with the original user key, derived from its password. Then, by using this message, the user password could be cracked offline.
 
 With Impacket:
+
 It is important to specify -no-pass in the script, otherwise a badpwdcount entry will be added to the user.
 ```
 # For multiples users
