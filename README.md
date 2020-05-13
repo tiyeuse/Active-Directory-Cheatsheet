@@ -468,7 +468,7 @@ Invoke-Command -ComputerName <target_computer> -Credential $Credential -ScriptBl
 
 ##### Unconstrained Delegation
 When we have admin rights on a machine with the `TrustedForDelegation` attribute we can abuse it in order elevate our privileges to domain admin.
-Note: it can be used to compromise another forest if the 2 forests have bidirectional relations and `TGTDelegation` set to True.
+Note: it can be used to compromise another forest if the 2 forests have bidirectional relations and `TGTDelegation` set to True (this can be checked with PowerShell Active Directory module and the command `Get-ADTrust -Filter *|fl`).
 Goal: make a privileged user connect to our compromise machine.
 ```
 # Monitoring incomings TGTs with rubeus:
