@@ -567,7 +567,7 @@ openssl pkcs12 -in cert.pem -keyex -CSP "Microsoft Enhanced Cryptographic Provid
 
 Linux
 
-Using modifyCertTemplate.py and certipy
+Using [modifyCertTemplate.py](https://github.com/tiyeuse/Active-Directory-Cheatsheet/tree/master/tools/modifyCertTemplate) and [certipy](https://github.com/tiyeuse/Active-Directory-Cheatsheet/tree/master/tools/certipy)
 
 ```
 # saved all previous attributes before modification
